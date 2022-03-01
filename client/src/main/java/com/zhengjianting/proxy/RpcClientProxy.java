@@ -2,6 +2,7 @@ package com.zhengjianting.proxy;
 
 import com.zhengjianting.config.RpcServiceConfig;
 import com.zhengjianting.dto.RpcRequest;
+import com.zhengjianting.dto.RpcResponse;
 import com.zhengjianting.transport.RpcRequestTransport;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,6 +26,7 @@ public class RpcClientProxy implements InvocationHandler {
         return (T) Proxy.newProxyInstance(clazz.getClassLoader(), new Class<?>[] { clazz }, this);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         RpcRequest rpcRequest = RpcRequest.builder().requestId(UUID.randomUUID().toString())
@@ -35,7 +37,7 @@ public class RpcClientProxy implements InvocationHandler {
                                                     .group(rpcServiceConfig.getGroup())
                                                     .version(rpcServiceConfig.getVersion())
                                                     .build();
-        // return value should be casted to rpcResponse.
-        return rpcRequestTransport.sendRpcRequest(rpcRequest);
+        RpcResponse<Object> rpcResponse = (RpcResponse<Object>) rpcRequestTransport.sendRpcRequest(rpcRequest);
+        return rpcResponse.getData();
     }
 }
