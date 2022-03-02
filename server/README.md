@@ -60,5 +60,52 @@
   }
   ```
 
-  
 
+### resources
+
+- rpc.properties
+
+  ```properties
+  rpc.zookeeper.address = 127.0.0.1:2181
+  ```
+
+  在 `RpcNIOServer` 中，启动服务端之前需要注册服务：
+
+  ```java
+  private final ServiceProvider serviceProvider;
+  public void registerService(RpcServiceConfig rpcServiceConfig) {
+      serviceProvider.publishService(rpcServiceConfig);
+  }
+  ```
+
+  在 `ServiceProviderImpl` 中，通过 `ServiceRegister` 注册服务：
+
+  ```java
+  private final ServiceRegistry serviceRegistry;
+  
+  @Override
+  public void publishService(RpcServiceConfig rpcServiceConfig) {
+      try {
+          this.addService(rpcServiceConfig);
+          String host = InetAddress.getLocalHost().getHostAddress();
+          serviceRegistry.registerService(rpcServiceConfig.getRpcServiceName(), new InetSocketAddress(host, 10526));
+      } catch (UnknownHostException e) {
+          log.error(e.getMessage(), e);
+      }
+  }
+  ```
+
+  在 `ServiceRegisterImpl` 中，需要获取 zookeeper client，根据 rpcServiceName 创建一个持久化节点：
+
+  ```java
+  public class ServiceRegistryImpl implements ServiceRegistry {
+      @Override
+      public void registerService(String rpcServiceName, InetSocketAddress address) {
+          String path = CuratorUtils.ZK_REGISTER_ROOT_PATH + "/" + rpcServiceName + address.toString();
+          CuratorFramework zkClient = CuratorUtils.getZkClient();
+          CuratorUtils.createPersistentNode(zkClient, path);
+      }
+  }
+  ```
+
+  通过 `CuratorUtils.getZkClient()` 获取 zkClient 需要读取配置文件

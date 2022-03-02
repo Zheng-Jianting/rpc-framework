@@ -97,4 +97,42 @@
   }
   ```
 
+
+### resources
+
+- rpc.properties
+
+  在 `RpcRequestTransportImpl` 中，发送 `RpcRequest` 之前需要查找实现了该接口（服务）的服务端地址：
+
+  ```java
+  private final ServiceDiscovery serviceDiscovery;
+  InetSocketAddress address = serviceDiscovery.lookupService(rpcRequest);
+  ```
+
+  在 `ServiceDiscovery` 的实现类 `ServiceDiscoveryImpl` 中，需要获取调用 `CuratorUtils.getZkClient()` 方法获取 zookeeper client，在该方法中需要读取配置文件：
+
+  ```properties
+  rpc.zookeeper.address = 127.0.0.1:2181
+  ```
+
+  ```java
+  public class ServiceDiscoveryImpl implements ServiceDiscovery {
+      @Override
+      public InetSocketAddress lookupService(RpcRequest rpcRequest) {
+          String rpcServiceName = rpcRequest.getRpcServiceName();
+          CuratorFramework zkClient = CuratorUtils.getZkClient();
+          List<String> addresses = CuratorUtils.getChildrenNodes(zkClient, rpcServiceName);
+          if (addresses == null || addresses.size() == 0) {
+              throw new RuntimeException("No server implementing this service was found.");
+          }
+  
+          // default select the first address
+          String host = addresses.get(0).split(":")[0];
+          int port = Integer.parseInt(addresses.get(0).split(":")[1]);
+  
+          return new InetSocketAddress(host, port);
+      }
+  }
+  ```
+
   
