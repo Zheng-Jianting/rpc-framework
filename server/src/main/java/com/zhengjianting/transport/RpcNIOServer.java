@@ -18,6 +18,7 @@ import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -31,6 +32,8 @@ public class RpcNIOServer {
     private static final long KEEP_ALIVE_TIME = 1L;
     private static final int QUEUE_CAPACITY = 100;
 
+    private final Set<SocketChannel> socketChannelSet;
+
     public RpcNIOServer() {
         serviceProvider = SingletonFactory.getInstance(ServiceProviderImpl.class);
         executor = new ThreadPoolExecutor(
@@ -41,6 +44,8 @@ public class RpcNIOServer {
                 new ArrayBlockingQueue<>(QUEUE_CAPACITY),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
+
+        socketChannelSet = ConcurrentHashMap.newKeySet();
     }
 
     public void registerService(RpcServiceConfig rpcServiceConfig) {
@@ -89,13 +94,19 @@ public class RpcNIOServer {
                         socketChannel.register(selector, SelectionKey.OP_READ);
                     }
                     else if (selectionKey.isValid() && selectionKey.isReadable()) {
+                        log.info("selectionKey is readable.");
+
                         SocketChannel socketChannel = (SocketChannel) selectionKey.channel();
 
                         /**
                          * 当 IO 事件准备好时, 新建一个线程处理
                          * 在这指客户端发送的 RpcRequest 经网络传输到达了服务端的内核缓冲区
                          */
-                        executor.execute(new RpcRequestHandlerRunnable(socketChannel));
+                        if (!socketChannelSet.contains(socketChannel)) {
+                            log.info("create new thread.");
+                            socketChannelSet.add(socketChannel);
+                            executor.execute(new RpcRequestHandlerRunnable(socketChannel));
+                        }
                     }
 
                     // 处理完毕后就移除, 避免事件被重复处理

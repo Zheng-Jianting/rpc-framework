@@ -13,11 +13,13 @@ public class ClientExample {
 
         // get HelloService proxy
         HelloService helloServiceProxy = rpcClientProxy.getProxy(HelloService.class);
-        helloServiceProxy.hello("zjt");
+        String helloResult = helloServiceProxy.hello("zjt");
+        System.out.println(helloResult);
 
         // get GoodByeService proxy
         GoodByeService goodByeServiceProxy = rpcClientProxy.getProxy(GoodByeService.class);
-        goodByeServiceProxy.goodBye("zjt");
+        String goodByeResult = goodByeServiceProxy.goodBye("zjt");
+        System.out.println(goodByeResult);
 
         synchronized (ClientExample.class) {
             ClientExample.class.wait();
