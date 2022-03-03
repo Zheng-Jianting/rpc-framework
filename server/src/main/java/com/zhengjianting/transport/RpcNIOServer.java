@@ -5,6 +5,7 @@ import com.zhengjianting.factory.SingletonFactory;
 import com.zhengjianting.handler.RpcRequestHandlerRunnable;
 import com.zhengjianting.provider.ServiceProvider;
 import com.zhengjianting.provider.impl.ServiceProviderImpl;
+import com.zhengjianting.zookeeper.util.CustomShutdownHook;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
@@ -58,6 +59,8 @@ public class RpcNIOServer {
             ServerSocket serverSocket = ssChannel.socket();
             String localhost = InetAddress.getLocalHost().getHostAddress();
             serverSocket.bind(new InetSocketAddress(localhost, 10526));
+
+            CustomShutdownHook.getCustomShutdownHook().clearAll();
 
             while (true) {
                 /**
