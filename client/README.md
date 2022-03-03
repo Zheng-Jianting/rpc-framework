@@ -28,7 +28,7 @@
 
 ### transport
 
-- RpcRequestTransportImpl：客户端通过 `Socket` 传输 `RpcRequest` 至服务端，并接收响应。
+- RpcRequestTransportImpl：客户端通过 `Socket` 传输 `RpcRequest` 至服务端，并接收响应。其中，序列化和反序列化使用 `Protobuf`
 
   ```java
   @Slf4j
@@ -44,23 +44,39 @@
           InetSocketAddress address = serviceDiscovery.lookupService(rpcRequest);
           try {
               Socket socket = new Socket();
+              log.info(address.toString());
               socket.connect(address);
   
+              // serializer
+              Serializer serializer = new ProtobufSerializerImpl();
+  
               // send request to server
-              ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-              out.writeObject(rpcRequest);
+              OutputStream out = socket.getOutputStream();
+              out.write(serializer.serialize(rpcRequest));
+              out.flush();
+              socket.shutdownOutput();
   
               // receive response from server
-              ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
-              return in.readObject();
-          } catch (IOException | ClassNotFoundException e) {
+              InputStream in = socket.getInputStream();
+              byte[] responseBuff = new byte[0];
+              byte[] buff = new byte[1024];
+              int k = -1;
+              while((k = in.read(buff, 0, buff.length)) > -1) {
+                  byte[] tempBuff = new byte[responseBuff.length + k]; // temp buffer size = bytes already read + bytes last read
+                  System.arraycopy(responseBuff, 0, tempBuff, 0, responseBuff.length); // copy previous bytes
+                  System.arraycopy(buff, 0, tempBuff, responseBuff.length, k);  // copy current lot
+                  responseBuff = tempBuff; // call the temp buffer as your result buff
+              }
+  
+              return serializer.deserialize(responseBuff, RpcResponse.class);
+          } catch (IOException e) {
               log.error(e.getMessage(), e);
               throw new RuntimeException("error from sendRpcRequest.");
           }
       }
   }
   ```
-
+  
   其中，`ServiceDiscovery` 调用 `lookupService(rpcRequest)` 查找实现了该服务的服务端地址。
 
 ### proxy
@@ -96,43 +112,3 @@
       }
   }
   ```
-
-
-### resources
-
-- rpc.properties
-
-  在 `RpcRequestTransportImpl` 中，发送 `RpcRequest` 之前需要查找实现了该接口（服务）的服务端地址：
-
-  ```java
-  private final ServiceDiscovery serviceDiscovery;
-  InetSocketAddress address = serviceDiscovery.lookupService(rpcRequest);
-  ```
-
-  在 `ServiceDiscovery` 的实现类 `ServiceDiscoveryImpl` 中，需要获取调用 `CuratorUtils.getZkClient()` 方法获取 zookeeper client，在该方法中需要读取配置文件：
-
-  ```properties
-  rpc.zookeeper.address = 127.0.0.1:2181
-  ```
-
-  ```java
-  public class ServiceDiscoveryImpl implements ServiceDiscovery {
-      @Override
-      public InetSocketAddress lookupService(RpcRequest rpcRequest) {
-          String rpcServiceName = rpcRequest.getRpcServiceName();
-          CuratorFramework zkClient = CuratorUtils.getZkClient();
-          List<String> addresses = CuratorUtils.getChildrenNodes(zkClient, rpcServiceName);
-          if (addresses == null || addresses.size() == 0) {
-              throw new RuntimeException("No server implementing this service was found.");
-          }
-  
-          // default select the first address
-          String host = addresses.get(0).split(":")[0];
-          int port = Integer.parseInt(addresses.get(0).split(":")[1]);
-  
-          return new InetSocketAddress(host, port);
-      }
-  }
-  ```
-
-  
