@@ -18,7 +18,6 @@ import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -32,8 +31,6 @@ public class RpcNIOServer {
     private static final long KEEP_ALIVE_TIME = 1L;
     private static final int QUEUE_CAPACITY = 100;
 
-    private final Set<SocketChannel> socketChannelSet;
-
     public RpcNIOServer() {
         serviceProvider = SingletonFactory.getInstance(ServiceProviderImpl.class);
         executor = new ThreadPoolExecutor(
@@ -44,8 +41,6 @@ public class RpcNIOServer {
                 new ArrayBlockingQueue<>(QUEUE_CAPACITY),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
-
-        socketChannelSet = ConcurrentHashMap.newKeySet();
     }
 
     public void registerService(RpcServiceConfig rpcServiceConfig) {
@@ -102,11 +97,17 @@ public class RpcNIOServer {
                          * 当 IO 事件准备好时, 新建一个线程处理
                          * 在这指客户端发送的 RpcRequest 经网络传输到达了服务端的内核缓冲区
                          */
-                        if (!socketChannelSet.contains(socketChannel)) {
-                            log.info("create new thread.");
-                            socketChannelSet.add(socketChannel);
-                            executor.execute(new RpcRequestHandlerRunnable(socketChannel));
-                        }
+                        log.info("create new thread.");
+                        executor.execute(new RpcRequestHandlerRunnable(socketChannel));
+
+                        /**
+                         * 由于没有阻塞在这处理 IO 事件, 而是新建了一个线程去处理
+                         * 因此当再次监听到这个通道的 IO 事件时, 不应该再新建一个线程去处理, 因为已经有线程在处理这个通道的 IO 事件了
+                         *
+                         * 为什么会多次监听到这个通道的 IO 事件, 因为报文段 (Segment) 是一部分一部分传输的
+                         * 于是第一次监听到某个通道的 IO 事件时, 新建一个线程去处理, 然后选择器不再监听这个通道
+                         */
+                        selectionKey.cancel();
                     }
 
                     // 处理完毕后就移除, 避免事件被重复处理
